@@ -8,8 +8,12 @@
 #include <unordered_set>
 #include <mutex>
 
-std::unordered_set<int> clients;
-std::mutex clients_mutex;
+// std::unordered_set<int> clients;
+// std::mutex clients;
+
+struct Clients : std::unordered_set<int> {
+    std::mutex m;
+} clients;
 
 void myerror(const char* msg) { fprintf(stderr, "%s %s %d\n", msg, strerror(errno), errno); }
 
@@ -42,7 +46,7 @@ struct Param {
 } param;
 
 void broadcastMessage(const char* message, size_t len, int exclude_sd) {
-    std::lock_guard<std::mutex> lock(clients_mutex);
+    std::lock_guard<std::mutex> lock(clients.m);
     for (int client_sd : clients) {
         if (client_sd != exclude_sd) {
             send(client_sd, message, len, 0);
@@ -51,8 +55,10 @@ void broadcastMessage(const char* message, size_t len, int exclude_sd) {
 }
 
 void recvThread(int sd) {
-    std::lock_guard<std::mutex> lock(clients_mutex);
-    clients.insert(sd);
+    {
+        std::lock_guard<std::mutex> lock(clients.m);
+        clients.insert(sd);
+    }
 
     printf("connected\n");
     fflush(stdout);
@@ -83,10 +89,10 @@ void recvThread(int sd) {
             }
         }
     }
-
-    std::lock_guard<std::mutex> lock(clients_mutex);
-    clients.erase(sd);
-
+    {
+        std::lock_guard<std::mutex> lock(clients.m);
+        clients.erase(sd);
+    }
     printf("disconnected\n");
     fflush(stdout);
     close(sd);
